@@ -1,0 +1,25 @@
+name: base
+channels:
+    - conda-forge
+    - defaults
+dependencies:
+
+### General
+    - python=3.9
+    - curl
+    - fs
+    - fs-gcsfs
+    - more-itertools
+    - openssl
+    - pip
+    - python-dateutil
+    - requests
+
+### Data science
+    - pandas=1.4
+
+#    - pip:
+#        - apache-airflow==2.2.3
+#        - apache-airflow[kubernetes]==2.2.3
+#        - apache-airflow-providers-cncf-kubernetes
+#        - kubernetes==21.7

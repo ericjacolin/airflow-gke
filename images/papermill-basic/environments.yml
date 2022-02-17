@@ -1,0 +1,10 @@
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - tqdm
+  - psycopg2
+  - ipykernel
+  - papermill
+  - ipywidgets

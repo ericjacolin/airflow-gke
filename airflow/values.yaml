@@ -1,0 +1,100 @@
+# Common
+env:
+  - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+    value: "True"
+executor: KubernetesExecutor
+fernetKey: kkEDrWqDYFuMlJiMBUHdmXbWBQ1fmFwrEPWBDAUikpc=
+securityContext:
+  fsGroup: 0
+#  runAsGroup: 0
+#  runAsUser: 50000
+
+# Airflow
+airflow:
+# dags:
+#   persistence:
+#     enabled: true
+#     existingClaim: dag-pv-claim
+#   gitSync:
+#     enabled: false
+
+# Redis & Flower not needed with the KubernetesExecutor
+redis:
+  enabled: false
+flower:
+  enabled: false
+statsd:
+  enabled: false
+
+# Database external to the cluster
+postgresql:
+  enabled: false
+data:
+  metadataConnection:
+    user: airflow
+    pass: airflow
+    protocol: mysql
+    host: 10.0.2.2
+    port: 3306
+    db: airflow
+    sslmode: disable
+
+# Logs - will be mounted on all Airflow contianers (Web server, Scheduler, Triggerer, Worker)
+logs:
+  persistence:
+    enabled: true
+    existingClaim: log-pv-claim
+
+# Web server
+webserver:
+  extraVolumes:
+    - name: dags
+      hostPath:
+        path: /hosthome/airflow/dags
+        type: Directory
+  extraVolumeMounts:
+    - name: dags
+      mountPath: /opt/airflow/dags
+  securityContext:
+    fsGroup: 0
+  # podAnnotations:
+  #   timestamp: "{{ now | quote }}"
+
+# Scheduler
+scheduler:
+  extraVolumes:
+    - name: dags
+      hostPath:
+        path: /hosthome/airflow/dags
+        type: Directory
+  extraVolumeMounts:
+    - name: dags
+      mountPath: /opt/airflow/dags
+  securityContext:
+    fsGroup: 0
+
+# Triggerer
+triggerer:
+  extraVolumes:
+    - name: dags
+      hostPath:
+        path: /hosthome/airflow/dags
+        type: Directory
+  extraVolumeMounts:
+    - name: dags
+      mountPath: /opt/airflow/dags
+  securityContext:
+    fsGroup: 0
+
+# Workers
+workers:
+  extraVolumes:
+    - name: dags
+      hostPath:
+        path: /hosthome/airflow/dags
+        type: Directory
+  extraVolumeMounts:
+    - name: dags
+      mountPath: /opt/airflow/dags
+  securityContext:
+    fsGroup: 0

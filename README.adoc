@@ -1,0 +1,185 @@
+= Airflow on Minikube and GKE
+
+== Local Minikube environment
+
+=== Prerequisites
+
+* A working minikube installation with a Virtualbox VM back-end. Provide ample resources:
+`minikube start --driver=virtualbox --cpus 6 --memory 8192`
+* Helm (v3) installed on host
+* A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the cluster.
+
+=== Helm Airflow installation
+
+https://helm.sh/docs/intro/install/[See]
+
+To install Helm 3 on the host:
+
+.In the local shell:
+[source,bash]
+----
+curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -
+sudo apt-get install apt-transport-https --yes
+echo "deb https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+----
+
+== Persistent data
+
+Here we describe how we manage persistent data in the local Minikube context. In a production
+environment we will do things differently.
+
+=== DAGs
+
+We mount bind the local airflow folder to the Minikube VM:
+`sudo mount --bind /opt/data/projects/airflow /home/airflow`.
+This folder is viewable from within the Minikube VM node as `/hosthome/airflow`, and will be used
+to make the git working folder where dags and task code immediately available to Airflow.
+
+DAGs require a Persistent Volume and Claim. They can't be simple hostPath mounts.
+The PV is shared (read-only) by Airflow and Workers.
+
+* Create a PVC pointing to the Minikube DAG folder `/hosthome/airflow/dags`:
+`kubectl apply -f airflow/dag-pv.yaml`
+* Create a PV of type 'hostpath' mounted on each of the webserver, scheduler, triggerer and worker pods
+
+This folder is read-only for containers.
+
+=== Data
+
+Each project (e.g. `example1`) has its own data directory `data/{project}`.
+Worker pods mount this data directory to read and write data files.
+
+=== Logs
+
+This is the output of Workers, includes boilerplate Worker container logging and application-specific
+logging (such as the output of the `return` statement of a function).
+
+Using a home mounted folder such as `/hosthome/airflow/logs` doesn't work. Containers don't get write permission on this folder as they're mounted onto a PV, so we must use a "native" Minikube host folder, such as `/data/airflow-logs`.
+
+Anyway these logs can be viewed from the UI, associated to each task execution. So it doesn't matter much that we can't view them from the host file system.
+
+Create a target folder on the Minikube host:
+
+.In the local shell:
+[source,bash]
+----
+# Create the VM node mount point:
+minikube ssh
+mkdir /data/airflow-logs
+# Exit SSH and run:
+kubectl apply -f airflow/log-pv.yaml
+----
+
+== Deploying Airflow
+
+=== Secrets
+
+To generate a Fernet key:
+
+`python -c "from cryptography import Fernet; print(Fernet.generate_key().decode())"`
+
+e.g.: `kkEDrWqDYFuMlJiMBUHdmXbWBQ1fmFwrEPWBDAUikpc=`
+
+This key is used by Helm to:
+
+* Create a Kubernetes secret `airflow-fernet-key`
+* To mount this secret on all Airflow containers
+
+=== Deployment
+
+We deploy the official https://airflow.apache.org/docs/helm-chart/stable/index.html[Helm chart]
+
+.In the local shell:
+[source,bash]
+----
+# Add repo
+helm repo add apache-airflow https://airflow.apache.org
+# Configurations available
+helm show values apache-airflow/airflow > values.yaml
+# Deployment
+helm upgrade -f airflow/values.yaml --install airflow apache-airflow/airflow -n airflow --create-namespace --debug
+# Web UI (port 8080 on host is already in use, so, using 8090)
+# user: admin, password: admin
+kubectl port-forward svc/airflow-webserver 8090:8080 -n airflow
+# Launch UI:
+minikube service airflow-webserver -n airflow
+----
+
+Web UI login: admin:admin
+
+To test a change in configuration:
+
+.In the local shell:
+[source,bash]
+----
+# Change values.yaml and run:
+helm upgrade -f airflow/values.yaml --install airflow apache-airflow/airflow -n airflow --create-namespace --debug
+# Relaunch UI:
+kubectl port-forward svc/airflow-webserver 8090:8080 -n airflow
+----
+
+== Worker Docker images
+
+We create a library of predefined Docker image types under folder `images`,
+eg `pandas-basic`. The image simply creates a Python environment.
+
+To build a new version of an image:
+
+.In the local shell:
+[source,bash]
+----
+eval $(minikube docker-env)
+docker build -t pandas-basic:0.0.1 images/pandas-basic
+----
+
+== Task pods
+
+Task pods mount:
+
+* The Dags volume (where the python task executables are stored)
+* A Data volume, for file input/output
+
+== TO DO
+
+* Util to manage volumes
+* DB connection in kubernetes secret
+* Test Xcom
+* Architecture diagram
+* Publish on Github
+* Papermill working example
+
+== References
+
+=== Airflow
+
+https://towardsdatascience.com/a-journey-to-airflow-on-kubernetes-472df467f556
+
+https://medium.com/@ipeluffo/running-apache-airflow-locally-on-kubernetes-minikube-31f308e3247a
+
+https://airflow.apache.org/docs/helm-chart/stable/manage-logs.html#externally-provisioned-pvc
+
+https://airflow.apache.org/docs/helm-chart/stable/parameters-ref.html#workers
+
+https://medium.com/bluecore-engineering/were-all-using-airflow-wrong-and-how-to-fix-it-a56f14cb0753
+
+https://www.astronomer.io/blog/10-airflow-best-practices
+
+https://github.com/astronomer/airflow-chart
+
+https://docs.astronomer.io/enterprise/kubepodoperator/
+
+https://www.astronomer.io/guides/
+
+https://github.com/apache/airflow/blob/v1-10-stable/airflow/contrib/operators/kubernetes_pod_operator.py[Kubernetes Pod Operator API]
+
+https://airflow.apache.org/docs/apache-airflow-providers-cncf-kubernetes/stable/operators.html#how-does-xcom-work[How does Xcom work?]
+
+=== Papermill
+
+https://papermill.readthedocs.io/en/latest/usage-cli.html
+
+https://stackoverflow.com/questions/68828259/docker-airflow-run-papermill-from-a-different-container
+
+https://stackoverflow.com/questions/68828259/docker-airflow-run-papermill-from-a-different-container
