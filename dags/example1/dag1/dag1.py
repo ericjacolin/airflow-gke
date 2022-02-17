@@ -1,9 +1,9 @@
-from datetime import datetime
 from airflow.decorators import dag, task
 #from kubernetes.client import models as k8s
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
-from airflow.kubernetes.volume import Volume
-from airflow.kubernetes.volume_mount import VolumeMount
+
+from datetime import datetime
+from common.utils.task_pod_volumes import task_pod_volumes
 
 @dag(
     schedule_interval=None,
@@ -16,31 +16,7 @@ def dag1():
     """
 
     # Volumes to mount on Task pods
-    volume_config_dag = {
-        'hostPath':
-            {
-                'path': '/hosthome/airflow/dags',
-                'type': 'Directory'
-            }
-    }
-    volume_dag = Volume(name='dag', configs=volume_config_dag)
-    volume_config_data = {
-        'hostPath':
-            {
-                'path': '/hosthome/storage-buckets/airflow/example1',
-                'type': 'Directory'
-            }
-    }
-    volume_data = Volume(name='data', configs=volume_config_data)
-
-    volume_mount_dag = VolumeMount('dag',
-                                mount_path='/opt/airflow/dags',
-                                sub_path=None,
-                                read_only=True)
-    volume_mount_data = VolumeMount('data',
-                                mount_path='/opt/data',
-                                sub_path=None,
-                                read_only=False)
+    volumes = task_pod_volumes('example1')
 
     # Pod compute resources required
     compute_resources = {
@@ -58,8 +34,8 @@ def dag1():
         cmds=["python"],
         arguments=["/opt/airflow/dags/example1/dag1/tasks/task1.py"],
         labels={},
-        volumes=[volume_dag, volume_data],
-        volume_mounts=[volume_mount_dag, volume_mount_data],
+        volumes=volumes['volumes'],
+        volume_mounts=volumes['volume_mounts'],
         in_cluster=True,
         is_delete_operator_pod=True,
         #resources=compute_resources,
