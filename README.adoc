@@ -143,10 +143,11 @@ Task pods mount:
 
 == TO DO
 
-* Util to manage volumes
-* DB connection in kubernetes secret
-* Test Xcom
+* Orchestration with 2 tasks
+* Xcom passed between tasks
+* Make Xcom a util function
 * Architecture diagram
+* DB connection in kubernetes secret
 * Publish on Github
 * Papermill working example
 

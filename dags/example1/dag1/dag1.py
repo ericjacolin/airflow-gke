@@ -16,10 +16,10 @@ def dag1():
     """
 
     # Volumes to mount on Task pods
-    volumes = task_pod_volumes('example1')
+    volumes = task_pod_volumes(project='example1')
 
     # Pod compute resources required
-    compute_resources = {
+    task1_compute_resources = {
         'request_cpu': '200m',
         'request_memory': '1Gi',
         'limit_cpu': '400m',
@@ -32,14 +32,37 @@ def dag1():
         namespace="airflow",
         image="pandas-basic:0.0.1",
         cmds=["python"],
-        arguments=["/opt/airflow/dags/example1/dag1/tasks/task1.py"],
+        arguments=[
+            "/opt/airflow/dags/example1/dag1/tasks/task1.py",
+        ],
         labels={},
         volumes=volumes['volumes'],
         volume_mounts=volumes['volume_mounts'],
         in_cluster=True,
         is_delete_operator_pod=True,
-        #resources=compute_resources,
-        do_xcom_push=False,             # Why does it fail when set to True? Fernet secret?
+        #resources=task1_compute_resources,
+        do_xcom_push=True,
     )
+
+    task2 = KubernetesPodOperator(
+        task_id="task2",
+        name="dag1-task2",
+        namespace="airflow",
+        image="pandas-basic:0.0.1",
+        cmds=["python"],
+        arguments=[
+            "/opt/airflow/dags/example1/dag1/tasks/task2.py",
+            "{{ task_instance.xcom_pull('task1')['status1'] }}",
+        ],
+        labels={},
+        volumes=volumes['volumes'],
+        volume_mounts=volumes['volume_mounts'],
+        in_cluster=True,
+        is_delete_operator_pod=True,
+        #resources=task1_compute_resources,
+        do_xcom_push=True,
+    )
+
+    task1 >> task2
 
 dag1 = dag1()
