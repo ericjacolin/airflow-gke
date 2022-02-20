@@ -2,6 +2,7 @@ from fs import open_fs
 import pandas as pd
 import numpy as np
 import json
+import os
 
 prefix = '/opt/data'
 input_file = open_fs(prefix).open('/input/input.csv', mode='r')
@@ -13,7 +14,7 @@ df = df.apply(np.sqrt)
 df.to_csv(output_file)
 
 json_xcom = {
-    'status1': 'completed'
+    'status1': 'completed ' + os.environ.get('SENDER_EMAIL')
 }
 with open('/airflow/xcom/return.json', 'w') as outfile:
     outfile.write(json.dumps(json_xcom))

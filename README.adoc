@@ -1,13 +1,30 @@
 = Airflow on Minikube and GKE
 
+== Purpose
+
+A working infrastructure installation of Apache Airflow on Minikube (locally) and GKE.
+
+The key principle is to have local code as similar as possible to that running in GKE.
+
+On GKE Airflow will run in Kubernetes executor mode, using exclusively the KubernetesPodOperator.
+It also does so in the local Minikube environment.
+
 == Local Minikube environment
 
 === Prerequisites
 
-* A working minikube installation with a Virtualbox VM back-end. Provide ample resources:
+* A working Minikube installation with a Virtualbox VM back-end. Provide ample resources, we suggest 6 vCPU and 8GB of RAM:
 `minikube start --driver=virtualbox --cpus 6 --memory 8192`
 * Helm (v3) installed on host
 * A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the cluster.
+
+=== Architecture
+image::architecture-local.png[]
+
+Task pods mount:
+
+* The Dags volume (where the python task executables are stored)
+* A Data volume, for file input/output
 
 === Helm Airflow installation
 
@@ -27,40 +44,40 @@ sudo apt-get install helm
 
 == Persistent data
 
-Here we describe how we manage persistent data in the local Minikube context. In a production
-environment we will do things differently.
+Airflow manages persistent data for dags, logs and data. The setup will differ locally and in production.
+Here we describe how we manage persistent data in the local Minikube context.
 
 === DAGs
 
 We mount bind the local airflow folder to the Minikube VM:
-`sudo mount --bind /opt/data/projects/airflow /home/airflow`.
+`sudo mount --bind /opt/data/projects/airflow-gke /home/airflow`.
 This folder is viewable from within the Minikube VM node as `/hosthome/airflow`, and will be used
-to make the git working folder where dags and task code immediately available to Airflow.
+to make the git working directory where dags and task code immediately available to the Airflow execution
+environment in read-only mode.
 
-DAGs require a Persistent Volume and Claim. They can't be simple hostPath mounts.
-The PV is shared (read-only) by Airflow and Workers.
-
-* Create a PVC pointing to the Minikube DAG folder `/hosthome/airflow/dags`:
-`kubectl apply -f airflow/dag-pv.yaml`
-* Create a PV of type 'hostpath' mounted on each of the webserver, scheduler, triggerer and worker pods
-
-This folder is read-only for containers.
+When you execute a dag, the current code is used. Airflow does not cache dags.
 
 === Data
 
-Each project (e.g. `example1`) has its own data directory `data/{project}`.
+Each project (e.g. `example1`) has its own data directory `data/{{project}}`.
 Worker pods mount this data directory to read and write data files.
+
+We mount bind a data folder to the Minikube VM:
+`sudo mount --bind /opt/data/storage-buckets/airflow /home/storage-buckets/airflow`.
+
+To ensure that the same code runs locally and on GKE to I/O data, we use the Python `fs-gcsfs` file system abstraction library.
 
 === Logs
 
 This is the output of Workers, includes boilerplate Worker container logging and application-specific
-logging (such as the output of the `return` statement of a function).
+logging (such as the output of the `return` statement of a task function).
 
-Using a home mounted folder such as `/hosthome/airflow/logs` doesn't work. Containers don't get write permission on this folder as they're mounted onto a PV, so we must use a "native" Minikube host folder, such as `/data/airflow-logs`.
+Log persistence require a Kubernetes Persistent Volume and Claim. They can't be hostPath mounts.
+The PV is shared (read-only) by Airflow and Workers.
 
-Anyway these logs can be viewed from the UI, associated to each task execution. So it doesn't matter much that we can't view them from the host file system.
+Using a home mounted folder such as `/hosthome/airflow/logs` doesn't work. Containers don't get write permission on such folder as they're mounted onto a PV, so we must use a "native" Minikube host folder, such as `/data/airflow-logs`.
 
-Create a target folder on the Minikube host:
+Anyway these logs are best viewed from the Airflow UI, associated to each task execution. So it doesn't matter much that we can't access them from the host file system.
 
 .In the local shell:
 [source,bash]
@@ -87,7 +104,7 @@ This key is used by Helm to:
 * Create a Kubernetes secret `airflow-fernet-key`
 * To mount this secret on all Airflow containers
 
-=== Deployment
+=== Kubernetes deployments
 
 We deploy the official https://airflow.apache.org/docs/helm-chart/stable/index.html[Helm chart]
 
@@ -98,32 +115,30 @@ We deploy the official https://airflow.apache.org/docs/helm-chart/stable/index.h
 helm repo add apache-airflow https://airflow.apache.org
 # Configurations available
 helm show values apache-airflow/airflow > values.yaml
-# Deployment
+# Deploy the Helm chart
 helm upgrade -f airflow/values.yaml --install airflow apache-airflow/airflow -n airflow --create-namespace --debug
-# Web UI (port 8080 on host is already in use, so, using 8090)
-# user: admin, password: admin
+# Port forwarding for the Web UI (default port 8080 on host is already in use, so using 8090 instead)
 kubectl port-forward svc/airflow-webserver 8090:8080 -n airflow
 # Launch UI:
 minikube service airflow-webserver -n airflow
 ----
 
-Web UI login: admin:admin
+You can log into the Web UI using admin:admin
 
-To test a change in configuration:
-
-.In the local shell:
-[source,bash]
-----
-# Change values.yaml and run:
-helm upgrade -f airflow/values.yaml --install airflow apache-airflow/airflow -n airflow --create-namespace --debug
-# Relaunch UI:
-kubectl port-forward svc/airflow-webserver 8090:8080 -n airflow
-----
+To change in configuration in `values.yaml`, run the helm chart again and restart the port forwarding as above.
 
 == Worker Docker images
 
 We create a library of predefined Docker image types under folder `images`,
-eg `pandas-basic`. The image simply creates a Python environment.
+eg `pandas-basic`. These images create predefined miniconda environments with suitable libraries for
+generic purposes, such as:
+
+* Pandas dataframe transformation for ETLs
+* Tensorflow model training
+* Geopandas GIS dataframe transformation
+* etc.
+
+Add additional dependencies to an image's `environment.yml` as needed and rebuild the image.
 
 To build a new version of an image:
 
@@ -131,23 +146,26 @@ To build a new version of an image:
 [source,bash]
 ----
 eval $(minikube docker-env)
-docker build -t pandas-basic:0.0.1 images/pandas-basic
+export TAG="0.0.1"
+docker build -t pandas-basic:${TAG} images/pandas-basic
 ----
 
-== Task pods
+Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such
+as `- pandas=1.4` instead of `- pandas`. This is good practice anyway to ensure environment
+reproducibility.
 
-Task pods mount:
+miniconda is handy because one would
+typically develop tasks' Python code in Jupyter notebooks, which use conda packaging and environment
+management.
 
-* The Dags volume (where the python task executables are stored)
-* A Data volume, for file input/output
+Of course Dockerhub native Python images can be used instead of miniconda.
 
 == TO DO
 
-* Orchestration with 2 tasks
-* Xcom passed between tasks
-* Make Xcom a util function
+* Config maps & secrets
 * Architecture diagram
 * DB connection in kubernetes secret
+* Deploy to GKE
 * Publish on Github
 * Papermill working example
 
@@ -176,6 +194,8 @@ https://www.astronomer.io/guides/
 https://github.com/apache/airflow/blob/v1-10-stable/airflow/contrib/operators/kubernetes_pod_operator.py[Kubernetes Pod Operator API]
 
 https://airflow.apache.org/docs/apache-airflow-providers-cncf-kubernetes/stable/operators.html#how-does-xcom-work[How does Xcom work?]
+
+https://medium.com/datareply/airflow-lesser-known-tips-tricks-and-best-practises-cf4d4a90f8f
 
 === Papermill
 

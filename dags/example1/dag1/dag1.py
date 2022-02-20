@@ -1,10 +1,14 @@
 from airflow.decorators import dag, task
-#from kubernetes.client import models as k8s
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
+from airflow.models.param import Param
+from kubernetes.client import models as k8s
 
 from datetime import datetime
 from common.utils.task_pod_volumes import task_pod_volumes
 
+env_vars = {
+    'SENDER_EMAIL': 'eric@jacolin.net',
+}
 @dag(
     schedule_interval=None,
     start_date=datetime(2021, 1, 1),
@@ -35,7 +39,7 @@ def dag1():
         arguments=[
             "/opt/airflow/dags/example1/dag1/tasks/task1.py",
         ],
-        labels={},
+        env_vars=env_vars,
         volumes=volumes['volumes'],
         volume_mounts=volumes['volume_mounts'],
         in_cluster=True,
@@ -44,25 +48,25 @@ def dag1():
         do_xcom_push=True,
     )
 
-    task2 = KubernetesPodOperator(
-        task_id="task2",
-        name="dag1-task2",
-        namespace="airflow",
-        image="pandas-basic:0.0.1",
-        cmds=["python"],
-        arguments=[
-            "/opt/airflow/dags/example1/dag1/tasks/task2.py",
-            "{{ task_instance.xcom_pull('task1')['status1'] }}",
-        ],
-        labels={},
-        volumes=volumes['volumes'],
-        volume_mounts=volumes['volume_mounts'],
-        in_cluster=True,
-        is_delete_operator_pod=True,
-        #resources=task1_compute_resources,
-        do_xcom_push=True,
-    )
-
-    task1 >> task2
+    # task2 = KubernetesPodOperator(
+    #     task_id="task2",
+    #     name="dag1-task2",
+    #     namespace="airflow",
+    #     image="pandas-basic:0.0.1",
+    #     cmds=["python"],
+    #     arguments=[
+    #         "/opt/airflow/dags/example1/dag1/tasks/task2.py",
+    #         "{{ task_instance.xcom_pull('task1')['status1'] }}",
+    #     ],
+    #     env_vars=env_vars,
+    #     volumes=volumes['volumes'],
+    #     volume_mounts=volumes['volume_mounts'],
+    #     in_cluster=True,
+    #     is_delete_operator_pod=True,
+    #     #resources=task1_compute_resources,
+    #     do_xcom_push=True,
+    # )
+    #
+    # task1 >> task2
 
 dag1 = dag1()
