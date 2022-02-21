@@ -4,10 +4,9 @@
 
 A working infrastructure installation of Apache Airflow on Minikube (locally) and GKE.
 
-The key principle is to have local code as similar as possible to that running in GKE.
+The key objective is to have local code (Dags, Tasks, Kubernetes objects) as similar as possible to that running in GKE.
 
-On GKE Airflow will run in Kubernetes executor mode, using exclusively the KubernetesPodOperator.
-It also does so in the local Minikube environment.
+We will run Airflow in GKE (Composer) in Kubernetes executor mode, using exclusively the KubernetesPodOperator. Therefore we do the same in the local Minikube environment.
 
 == Local Minikube environment
 
@@ -19,12 +18,19 @@ It also does so in the local Minikube environment.
 * A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the cluster.
 
 === Architecture
-image::architecture-local.png[]
 
-Task pods mount:
+image::docs/architecture-images/architecture-local.png[]
 
-* The Dags volume (where the python task executables are stored)
-* A Data volume, for file input/output
+The Airflow containers (Webserver, Scheduler, Worker) all:
+
+* Mount the Dags volumes as hostPath mounts (read)
+* Mount the Logs permanent volume (write)
+* Connect to the Airflow DB (write)
+
+The custom task execution containers:
+
+* Mount the Dags folder (this is where we store the Python task executables)
+* Mount the Data volume, for file input/output
 
 === Helm Airflow installation
 
@@ -147,7 +153,7 @@ To build a new version of an image:
 ----
 eval $(minikube docker-env)
 export TAG="0.0.1"
-docker build -t pandas-basic:${TAG} images/pandas-basic
+docker build -t "pandas-basic:${TAG}" images/pandas-basic
 ----
 
 Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such
@@ -160,10 +166,16 @@ management.
 
 Of course Dockerhub native Python images can be used instead of miniconda.
 
+== Dag and Task design
+
+=== Environment variables
+
+We pass environment variables to the Worker using the `env_vars` argument to the KubernetesPodOperator.
+
+
 == TO DO
 
 * Config maps & secrets
-* Architecture diagram
 * DB connection in kubernetes secret
 * Deploy to GKE
 * Publish on Github
