@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import json
 import os
+from pathlib import Path
 
 prefix = '/opt/data'
 input_file = open_fs(prefix).open('/input/input.csv', mode='r')
@@ -13,8 +14,8 @@ df = pd.read_csv(input_file)
 df = df.apply(np.sqrt)
 df.to_csv(output_file)
 
-json_xcom = {
-    'status1': 'completed ' + os.environ.get('SENDER_EMAIL')
+# Write to Xcom
+xcom = {
+    'status1': 'completed ' + os.environ.get('SENDER_EMAIL') + ' ' + os.environ.get('dummy-key') + ' ' + os.environ.get('BIG_SECRET')
 }
-with open('/airflow/xcom/return.json', 'w') as outfile:
-    outfile.write(json.dumps(json_xcom))
+Path('/airflow/xcom/return.json').write_text(json.dumps(xcom))

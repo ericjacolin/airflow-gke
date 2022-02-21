@@ -1,10 +1,11 @@
 from airflow.decorators import dag, task
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
-from airflow.models.param import Param
-from kubernetes.client import models as k8s
+
+from common.utils.task_pod_configmaps import task_pod_configmaps
+from common.utils.task_pod_secrets import task_pod_secrets
+from common.utils.task_pod_volumes import task_pod_volumes
 
 from datetime import datetime
-from common.utils.task_pod_volumes import task_pod_volumes
 
 env_vars = {
     'SENDER_EMAIL': 'eric@jacolin.net',
@@ -18,9 +19,13 @@ def dag1():
     """
     DAG doco
     """
-
+    project='example1'
+    # Config maps to mount as env variables
+    configmaps = task_pod_configmaps(project)
+    # Secrets to mount as env variables
+    secrets = task_pod_secrets(project)
     # Volumes to mount on Task pods
-    volumes = task_pod_volumes(project='example1')
+    volumes = task_pod_volumes(project)
 
     # Pod compute resources required
     task1_compute_resources = {
@@ -40,6 +45,8 @@ def dag1():
             "/opt/airflow/dags/example1/dag1/tasks/task1.py",
         ],
         env_vars=env_vars,
+        env_from=configmaps,
+        secrets=secrets,
         volumes=volumes['volumes'],
         volume_mounts=volumes['volume_mounts'],
         in_cluster=True,

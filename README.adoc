@@ -92,7 +92,7 @@ Anyway these logs are best viewed from the Airflow UI, associated to each task e
 minikube ssh
 mkdir /data/airflow-logs
 # Exit SSH and run:
-kubectl apply -f airflow/log-pv.yaml
+kubectl apply -f k8s/log-pv.yml
 ----
 
 == Deploying Airflow
@@ -109,6 +109,15 @@ This key is used by Helm to:
 
 * Create a Kubernetes secret `airflow-fernet-key`
 * To mount this secret on all Airflow containers
+
+To generate a Kubernetes secret:
+
+.In the local shell:
+[source,bash]
+----
+# Create the VM node mount point:
+kubectl apply -f k8s/secrets.example1.local.yml
+----
 
 === Kubernetes deployments
 
@@ -156,13 +165,11 @@ export TAG="0.0.1"
 docker build -t "pandas-basic:${TAG}" images/pandas-basic
 ----
 
-Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such
-as `- pandas=1.4` instead of `- pandas`. This is good practice anyway to ensure environment
+Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such as `- pandas=1.4` instead of `- pandas`. This is good practice anyway to ensure environment
 reproducibility.
 
-miniconda is handy because one would
-typically develop tasks' Python code in Jupyter notebooks, which use conda packaging and environment
-management.
+miniconda is handy because one would typically develop tasks' Python code in Jupyter notebooks, which
+use conda packaging and environment management.
 
 Of course Dockerhub native Python images can be used instead of miniconda.
 
@@ -170,13 +177,23 @@ Of course Dockerhub native Python images can be used instead of miniconda.
 
 === Environment variables
 
-We pass environment variables to the Worker using the `env_vars` argument to the KubernetesPodOperator.
+There are two ways to pass environment variables to Worker pods:
 
+1. Using the `env_vars` argument to the KubernetesPodOperator. This in tun creates OS-level
+environment variables in the execution pod
+2. Using Kubernetes ConfigMaps
+
+In the local shell:
+[source,bash]
+----
+kubectl apply -f k8s/configmap.example1.local.yml
+----
+
+Naming convention: the secret's name should be identical to the project name (eg 'example1').
 
 == TO DO
 
-* Config maps & secrets
-* DB connection in kubernetes secret
+* Secrets
 * Deploy to GKE
 * Publish on Github
 * Papermill working example
@@ -200,6 +217,8 @@ https://www.astronomer.io/blog/10-airflow-best-practices
 https://github.com/astronomer/airflow-chart
 
 https://docs.astronomer.io/enterprise/kubepodoperator/
+
+https://registry.astronomer.io/dags/example-kubernetes
 
 https://www.astronomer.io/guides/
 
