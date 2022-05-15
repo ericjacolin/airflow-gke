@@ -6,7 +6,7 @@ A working infrastructure installation of Apache Airflow on Minikube (locally) an
 
 The key objective is to have local code (Dags, Tasks, Kubernetes objects) as similar as possible to that running in GKE.
 
-We will run Airflow in GKE (Composer) in Kubernetes executor mode, using exclusively the KubernetesPodOperator. Therefore we do the same in the local Minikube environment.
+We assume that we will run Airflow in GKE (Composer) in Kubernetes executor mode, using exclusively the KubernetesPodOperator. Therefore we do the same in the local Minikube environment.
 
 == Local Minikube environment
 
@@ -15,7 +15,7 @@ We will run Airflow in GKE (Composer) in Kubernetes executor mode, using exclusi
 * A working Minikube installation with a Virtualbox VM back-end. Provide ample resources, we suggest 6 vCPU and 8GB of RAM:
 `minikube start --driver=virtualbox --cpus 6 --memory 8192`
 * Helm (v3) installed on host
-* A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the cluster.
+* A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the Minikube cluster.
 
 === Architecture
 
@@ -23,13 +23,13 @@ image::docs/architecture-images/architecture-local.png[]
 
 The Airflow containers (Webserver, Scheduler, Worker) all:
 
-* Mount the Dags volumes as hostPath mounts (read)
+* Mount the Dags volumes as hostPath mounts (read-only)
 * Mount the Logs permanent volume (write)
 * Connect to the Airflow DB (write)
 
-The custom task execution containers:
+The Task execution containers:
 
-* Mount the Dags folder (this is where we store the Python task executables)
+* Mount the Dags folder, where we store the Python task executables (read-only)
 * Mount the Data volume, for file input/output
 
 === Helm Airflow installation
@@ -48,30 +48,36 @@ sudo apt-get update
 sudo apt-get install helm
 ----
 
-== Persistent data
+== Data persistence
 
-Airflow manages persistent data for dags, logs and data. The setup will differ locally and in production.
+Airflow persists data for DAGs, logs and data. The setup will differ locally and in production.
 Here we describe how we manage persistent data in the local Minikube context.
 
 === DAGs
 
 We mount bind the local airflow folder to the Minikube VM:
 `sudo mount --bind /opt/data/projects/airflow-gke /home/airflow`.
+
 This folder is viewable from within the Minikube VM node as `/hosthome/airflow`, and will be used
-to make the git working directory where dags and task code immediately available to the Airflow execution
+to make the git working directory where DAGs and task code immediately available to the Airflow execution
 environment in read-only mode.
 
-When you execute a dag, the current code is used. Airflow does not cache dags.
+When you execute a DAG, the current code is used. Airflow does not cache DAGs.
+
+In a cloud environment the DAG code will typically be pulled from a git repo.
 
 === Data
 
-Each project (e.g. `example1`) has its own data directory `data/{{project}}`.
+Convention: Each project (e.g. `example1`) has its own data directory `data/{{project}}`.
 Worker pods mount this data directory to read and write data files.
 
 We mount bind a data folder to the Minikube VM:
 `sudo mount --bind /opt/data/storage-buckets/airflow /home/storage-buckets/airflow`.
 
-To ensure that the same code runs locally and on GKE to I/O data, we use the Python `fs-gcsfs` file system abstraction library.
+To ensure that the same code runs locally and on GKE to read/write files, we use the Python `fs-gcsfs` file system abstraction library:
+
+* Locally the file system driver will be 'local'
+* In a cloud environment the file system driver will be cloud object storage, such as GCP Cloud Storage.
 
 === Logs
 
@@ -94,6 +100,8 @@ mkdir /data/airflow-logs
 # Exit SSH and run:
 kubectl apply -f k8s/log-pv.yml
 ----
+
+In a cloud environment logs will typically be handled by a Kubernetes managed service.
 
 == Deploying Airflow
 
@@ -145,7 +153,7 @@ To change in configuration in `values.yaml`, run the helm chart again and restar
 == Worker Docker images
 
 We create a library of predefined Docker image types under folder `images`,
-eg `pandas-basic`. These images create predefined miniconda environments with suitable libraries for
+eg `pandas-basic`. These images create predefined Miniconda environments with suitable libraries for
 generic purposes, such as:
 
 * Pandas dataframe transformation for ETLs
@@ -165,13 +173,13 @@ export TAG="0.0.1"
 docker build -t "pandas-basic:${TAG}" images/pandas-basic
 ----
 
-Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such as `- pandas=1.4` instead of `- pandas`. This is good practice anyway to ensure environment
+Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such as `- pandas=1.4` instead of just `- pandas`. This is good practice anyway to ensure maximum environment
 reproducibility.
 
-miniconda is handy because one would typically develop tasks' Python code in Jupyter notebooks, which
+Miniconda is handy because one would typically develop tasks' Python code in Jupyter notebooks, which
 use conda packaging and environment management.
 
-Of course Dockerhub native Python images can be used instead of miniconda.
+Of course Dockerhub native Python images can be used instead of Miniconda.
 
 == Dag and Task design
 
@@ -179,9 +187,10 @@ Of course Dockerhub native Python images can be used instead of miniconda.
 
 There are two ways to pass environment variables to Worker pods:
 
-1. Using the `env_vars` argument to the KubernetesPodOperator. This in tun creates OS-level
+1. Using the `env_vars` argument to the KubernetesPodOperator. This in turn creates
 environment variables in the execution pod
-2. Using Kubernetes ConfigMaps
+2. Using Kubernetes ConfigMaps, which create environment variables. Probably the better option in
+most cases
 
 In the local shell:
 [source,bash]
@@ -189,11 +198,23 @@ In the local shell:
 kubectl apply -f k8s/configmap.example1.local.yml
 ----
 
-Naming convention: the secret's name should be identical to the project name (eg 'example1').
+=== Helper functions
+
+To make the DAG code simpler and shorter we created helper functions in a Python package
+`dags/common/utils` to generate:
+
+* Volume mounts (DAGs and data)
+* ConfigMaps mounts to environment variables
+* Secrets mounts to environment variables
+
+These helper functions rely on the following naming conventions:
+
+* Each project has zero or one configmap; the configmap's name should be the project name (e.g. `example1`)
+* Each project has zero or one secret; the secret's name should be the project name (e.g. `example1`)
 
 == TO DO
 
-* Secrets
+* Clean up env examples
 * Deploy to GKE
 * Publish on Github
 * Papermill working example
@@ -218,7 +239,9 @@ https://github.com/astronomer/airflow-chart
 
 https://docs.astronomer.io/enterprise/kubepodoperator/
 
-https://registry.astronomer.io/dags/example-kubernetes
+https://registry.astronomer.io/dags/?page=1[DAG examples]
+
+https://registry.astronomer.io/dags/example-kubernetes[DAG KubernetesPodOPerator example]
 
 https://www.astronomer.io/guides/
 
