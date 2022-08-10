@@ -9,7 +9,7 @@ def task_pod_volumes(project):
     volume_config_dag = {
         'hostPath':
             {
-                'path': '/hosthome/airflow/dags',
+                'path': '/hosthome/projects/airflow-gke/dags',
                 'type': 'Directory'
             }
     }

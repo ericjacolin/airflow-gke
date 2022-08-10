@@ -6,8 +6,8 @@ executor: KubernetesExecutor
 fernetKey: kkEDrWqDYFuMlJiMBUHdmXbWBQ1fmFwrEPWBDAUikpc=
 securityContext:
   fsGroup: 0
-#  runAsGroup: 0
-#  runAsUser: 50000
+  runAsGroup: 0
+  runAsUser: 50000
 
 # Airflow
 airflow:
@@ -39,7 +39,7 @@ data:
     db: airflow
     sslmode: disable
 
-# Logs - will be mounted on all Airflow contianers (Web server, Scheduler, Triggerer, Worker)
+# Logs - will be mounted on all Airflow containers (Web server, Scheduler, Triggerer, Worker)
 logs:
   persistence:
     enabled: true
@@ -50,7 +50,7 @@ webserver:
   extraVolumes:
     - name: dags
       hostPath:
-        path: /hosthome/airflow/dags
+        path: /hosthome/projects/airflow-gke/dags
         type: Directory
   extraVolumeMounts:
     - name: dags
@@ -65,7 +65,7 @@ scheduler:
   extraVolumes:
     - name: dags
       hostPath:
-        path: /hosthome/airflow/dags
+        path: /hosthome/projects/airflow-gke/dags
         type: Directory
   extraVolumeMounts:
     - name: dags
@@ -78,7 +78,7 @@ triggerer:
   extraVolumes:
     - name: dags
       hostPath:
-        path: /hosthome/airflow/dags
+        path: /hosthome/projects/airflow-gke/dags
         type: Directory
   extraVolumeMounts:
     - name: dags
@@ -91,7 +91,7 @@ workers:
   extraVolumes:
     - name: dags
       hostPath:
-        path: /hosthome/airflow/dags
+        path: /hosthome/projects/airflow-gke/dags
         type: Directory
   extraVolumeMounts:
     - name: dags

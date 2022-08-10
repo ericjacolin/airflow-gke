@@ -1,20 +1,43 @@
 = Airflow on Minikube and GKE
+:author: Eric Jacolin
+:email: eric@jacolin.net
+:revnumber:
+:revdate:
+:revremark:
+:version-label!:
+:sectnums:
+:toc:
+:toclevels: 3
+ifndef::env-github[]
+:source-highlighter: highlightjs
+:highlightjsdir: ../github/highlight
+endif::[]
 
 == Purpose
 
 A working infrastructure installation of Apache Airflow on Minikube (locally) and GKE.
 
-The key objective is to have local code (Dags, Tasks, Kubernetes objects) as similar as possible to that running in GKE.
+The key objective is to have local code (Dags, Tasks, Kubernetes objects) as similar as possible
+to that running in GKE.
 
-We assume that we will run Airflow in GKE (Composer) in Kubernetes executor mode, using exclusively the KubernetesPodOperator. Therefore we do the same in the local Minikube environment.
+We assume that we will run Airflow in GKE (Composer) in Kubernetes executor mode, using
+exclusively the KubernetesPodOperator. Therefore we do the same in the local Minikube environment.
+
+== TODO
+
+* Test task reading/ writing into a DB, create airflow-test DB
+* Deploy to GKE
+* Publish on Github
+* Papermill working example
 
 == Local Minikube environment
 
 === Prerequisites
 
-* A working Minikube installation with a Virtualbox VM back-end. Provide ample resources, we suggest 6 vCPU and 8GB of RAM:
+* A working Minikube installation with a Virtualbox VM back-end - https://minikube.sigs.k8s.io/docs/start/[See]
+* Provide ample resources, we suggest 6 vCPU and 8GB of RAM:
 `minikube start --driver=virtualbox --cpus 6 --memory 8192`
-* Helm (v3) installed on host
+* Helm (v3) installed on host - https://helm.sh/docs/intro/install/[See]
 * A DB server running on host (PostgreSQL or MySQL). The host is seen as `10.0.2.2` from within the Minikube cluster.
 
 === Architecture
@@ -31,38 +54,26 @@ The Task execution containers:
 
 * Mount the Dags folder, where we store the Python task executables (read-only)
 * Mount the Data volume, for file input/output
+* Executes a Python script
 
-=== Helm Airflow installation
-
-https://helm.sh/docs/intro/install/[See]
-
-To install Helm 3 on the host:
-
-.In the local shell:
-[source,bash]
-----
-curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -
-sudo apt-get install apt-transport-https --yes
-echo "deb https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
-sudo apt-get update
-sudo apt-get install helm
-----
+https://github.com/apache/airflow/blob/v1-10-stable/airflow/contrib/operators/kubernetes_pod_operator.py[ KubernetesPodOperator task parameters]
 
 == Data persistence
 
-Airflow persists data for DAGs, logs and data. The setup will differ locally and in production.
+Airflow persists data for DAGs, logs and data. The setup will differ in a local and in a cloud environments.
 Here we describe how we manage persistent data in the local Minikube context.
 
 === DAGs
 
 We mount bind the local airflow folder to the Minikube VM:
-`sudo mount --bind /opt/data/projects/airflow-gke /home/airflow`.
 
-This folder is viewable from within the Minikube VM node as `/hosthome/airflow`, and will be used
-to make the git working directory where DAGs and task code immediately available to the Airflow execution
-environment in read-only mode.
+`sudo mount --bind /opt/data/projects /home/projects`.
 
-When you execute a DAG, the current code is used. Airflow does not cache DAGs.
+The Airflow project folder `/opt/data/projects/airflow-gke` is viewable from within the Minikube VM
+node as `/hosthome/projects/airflow-gke`, and will be used to make the git working directory where
+DAGs and task code immediately available to the Airflow execution environment in read-only mode.
+
+When you execute a DAG, the code in the project working directory is used. Airflow does not cache DAGs.
 
 In a cloud environment the DAG code will typically be pulled from a git repo.
 
@@ -74,9 +85,10 @@ Worker pods mount this data directory to read and write data files.
 We mount bind a data folder to the Minikube VM:
 `sudo mount --bind /opt/data/storage-buckets/airflow /home/storage-buckets/airflow`.
 
-To ensure that the same code runs locally and on GKE to read/write files, we use the Python `fs-gcsfs` file system abstraction library:
+To ensure that the same code runs locally and on GKE to read/write files, we use the Python `fs-gcsfs`
+file system abstraction library:
 
-* Locally the file system driver will be 'local'
+* Locally the file system driver will be 'local file system'
 * In a cloud environment the file system driver will be cloud object storage, such as GCP Cloud Storage.
 
 === Logs
@@ -87,17 +99,25 @@ logging (such as the output of the `return` statement of a task function).
 Log persistence require a Kubernetes Persistent Volume and Claim. They can't be hostPath mounts.
 The PV is shared (read-only) by Airflow and Workers.
 
-Using a home mounted folder such as `/hosthome/airflow/logs` doesn't work. Containers don't get write permission on such folder as they're mounted onto a PV, so we must use a "native" Minikube host folder, such as `/data/airflow-logs`.
+Using a home mounted folder such as `/hosthome/airflow/logs` doesn't work. Containers don't get
+write permission on such folder as they're mounted onto a PV, so we must use a "native" Minikube
+host folder, such as `/data/airflow-logs`.
 
-Anyway these logs are best viewed from the Airflow UI, associated to each task execution. So it doesn't matter much that we can't access them from the host file system.
+Anyway these logs are best viewed from the Airflow UI, associated to each task execution. So it
+doesn't matter much that we can't access them from the host file system.
 
 .In the local shell:
 [source,bash]
 ----
 # Create the VM node mount point:
 minikube ssh
-mkdir /data/airflow-logs
-# Exit SSH and run:
+sudo mkdir /data/airflow-logs
+sudo chown 50000 airflow-logs
+sudo chmod 0777 airflow-logs
+# Exit SSH
+# Create airflow nmespace if not exists
+kubectl create namespace airflow
+# Create the Logs PV
 kubectl apply -f k8s/log-pv.yml
 ----
 
@@ -137,7 +157,7 @@ We deploy the official https://airflow.apache.org/docs/helm-chart/stable/index.h
 # Add repo
 helm repo add apache-airflow https://airflow.apache.org
 # Configurations available
-helm show values apache-airflow/airflow > values.yaml
+helm show values apache-airflow/airflow > airflow/values.DIST.yaml
 # Deploy the Helm chart
 helm upgrade -f airflow/values.yaml --install airflow apache-airflow/airflow -n airflow --create-namespace --debug
 # Port forwarding for the Web UI (default port 8080 on host is already in use, so using 8090 instead)
@@ -152,9 +172,9 @@ To change in configuration in `values.yaml`, run the helm chart again and restar
 
 == Worker Docker images
 
-We create a library of predefined Docker image types under folder `images`,
-eg `pandas-basic`. These images create predefined Miniconda environments with suitable libraries for
-generic purposes, such as:
+We create a library of predefined Docker image types under folder `images`, eg `pandas-basic`.
+These images create predefined Miniconda environments with suitable libraries for generic purposes,
+such as:
 
 * Pandas dataframe transformation for ETLs
 * Tensorflow model training
@@ -173,13 +193,14 @@ export TAG="0.0.1"
 docker build -t "pandas-basic:${TAG}" images/pandas-basic
 ----
 
-Images can be slow to build due to conda package resolution. The trick is to specify package semantic versions such as `- pandas=1.4` instead of just `- pandas`. This is good practice anyway to ensure maximum environment
-reproducibility.
+Images can be slow to build due to conda package resolution. The trick is to specify package semantic
+versions such as `- pandas=1.4` instead of just `- pandas`. This is good practice anyway to ensure
+maximum environment reproducibility.
 
 Miniconda is handy because one would typically develop tasks' Python code in Jupyter notebooks, which
 use conda packaging and environment management.
 
-Of course Dockerhub native Python images can be used instead of Miniconda.
+Dockerhub native Python images can be used instead of Miniconda.
 
 == Dag and Task design
 
@@ -192,7 +213,7 @@ environment variables in the execution pod
 2. Using Kubernetes ConfigMaps, which create environment variables. Probably the better option in
 most cases
 
-In the local shell:
+.In the local shell:
 [source,bash]
 ----
 kubectl apply -f k8s/configmap.example1.local.yml
@@ -212,16 +233,15 @@ These helper functions rely on the following naming conventions:
 * Each project has zero or one configmap; the configmap's name should be the project name (e.g. `example1`)
 * Each project has zero or one secret; the secret's name should be the project name (e.g. `example1`)
 
-== TO DO
-
-* Clean up env examples
-* Deploy to GKE
-* Publish on Github
-* Papermill working example
-
 == References
 
 === Airflow
+
+https://airflow.apache.org/docs/apache-airflow/stable/templates-ref.html[Templates reference]
+
+https://airflow.apache.org/docs/apache-airflow-providers-cncf-kubernetes/stable/operators.html#how-to-use-cluster-configmaps-secrets-and-volumes-with-pod[How to use cluster ConfigMaps, Secrets, and Volumes with Pod?]
+
+https://www.astronomer.io/guides/airflow-sql-tutorial[Using Airflow to Execute SQL]
 
 https://towardsdatascience.com/a-journey-to-airflow-on-kubernetes-472df467f556
 
