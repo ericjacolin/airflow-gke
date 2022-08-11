@@ -53,7 +53,7 @@ The Airflow containers (Webserver, Scheduler, Worker) all:
 The Task execution containers:
 
 * Mount the Dags folder, where we store the Python task executables (read-only)
-* Mount the Data volume, for file input/output
+* Mount the Data volume, for file input/output (read/ write)
 * Executes a Python script
 
 https://github.com/apache/airflow/blob/v1-10-stable/airflow/contrib/operators/kubernetes_pod_operator.py[ KubernetesPodOperator task parameters]

@@ -7,6 +7,7 @@ from common.utils.task_pod_volumes import task_pod_volumes
 
 from datetime import datetime
 
+# Global env variables - will be available as environment variables in Task containers
 env_vars = {
     'SENDER_EMAIL': 'eric@jacolin.net',
 }
@@ -19,15 +20,16 @@ def dag1():
     """
     DAG doco
     """
+    # Project-based resources
     project='example1'
-    # Config maps to mount as env variables
+    # Config maps to mount as env variables in Task containers
     configmaps = task_pod_configmaps(project)
-    # Secrets to mount as env variables
+    # Secrets to mount as env variables in Task containers
     secrets = task_pod_secrets(project)
-    # Volumes to mount on Task pods
+    # Volumes to mount on Task containers
     volumes = task_pod_volumes(project)
 
-    # Pod compute resources required
+    # Pod compute resources required (usually only in remote environments)
     task1_compute_resources = {
         'request_cpu': '200m',
         'request_memory': '1Gi',
@@ -43,6 +45,7 @@ def dag1():
         cmds=["python"],
         arguments=[
             "/opt/airflow/dags/example1/dag1/tasks/task1.py",
+            "some Task1 argument"
         ],
         env_vars=env_vars,
         env_from=configmaps,
@@ -55,25 +58,25 @@ def dag1():
         do_xcom_push=True,
     )
 
-    # task2 = KubernetesPodOperator(
-    #     task_id="task2",
-    #     name="dag1-task2",
-    #     namespace="airflow",
-    #     image="pandas-basic:0.0.1",
-    #     cmds=["python"],
-    #     arguments=[
-    #         "/opt/airflow/dags/example1/dag1/tasks/task2.py",
-    #         "{{ task_instance.xcom_pull('task1')['status1'] }}",
-    #     ],
-    #     env_vars=env_vars,
-    #     volumes=volumes['volumes'],
-    #     volume_mounts=volumes['volume_mounts'],
-    #     in_cluster=True,
-    #     is_delete_operator_pod=True,
-    #     #resources=task1_compute_resources,
-    #     do_xcom_push=True,
-    # )
-    #
-    # task1 >> task2
+    task2 = KubernetesPodOperator(
+        task_id="task2",
+        name="dag1-task2",
+        namespace="airflow",
+        image="pandas-basic:0.0.1",
+        cmds=["python"],
+        arguments=[
+            "/opt/airflow/dags/example1/dag1/tasks/task2.py",
+            "{{ task_instance.xcom_pull('task1')['task1-output'] }}"
+        ],
+        env_vars=env_vars,
+        volumes=volumes['volumes'],
+        volume_mounts=volumes['volume_mounts'],
+        in_cluster=True,
+        is_delete_operator_pod=True,
+        #resources=task1_compute_resources,
+        do_xcom_push=True,
+    )
+
+    task1 >> task2
 
 dag1 = dag1()
