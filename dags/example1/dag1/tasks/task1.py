@@ -34,7 +34,7 @@ Path('/airflow/xcom/return.json').write_text(json.dumps(xcom))
 
 # Read from a DB, write to a file
 db_conn = sqlalchemy.create_engine(
-        'mysql+mysqlconnector://airflow_test:airflow_test@10.0.2.2:3306/airflow_test',
+        os.environ.get('SQLALCHEMY_DATABASE_URI'),
         pool_recycle=1,
         pool_timeout=57600
     ).connect()
