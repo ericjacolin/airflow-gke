@@ -189,8 +189,10 @@ To build a new version of an image:
 [source,bash]
 ----
 eval $(minikube docker-env)
-export TAG="0.0.1"
+export TAG="0.0.2"
 docker build -t "pandas-basic:${TAG}" images/pandas-basic
+# To exec into container for testing purposes (eg installing new Python package):
+docker run -it --name testco "pandas-basic:${TAG}" bash
 ----
 
 Images can be slow to build due to conda package resolution. The trick is to specify package semantic

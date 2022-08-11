@@ -41,7 +41,7 @@ def dag1():
         task_id="task1",
         name="dag1-task1",
         namespace="airflow",
-        image="pandas-basic:0.0.1",
+        image="pandas-basic:0.0.2",
         cmds=["python"],
         arguments=[
             "/opt/airflow/dags/example1/dag1/tasks/task1.py",
@@ -62,7 +62,7 @@ def dag1():
         task_id="task2",
         name="dag1-task2",
         namespace="airflow",
-        image="pandas-basic:0.0.1",
+        image="pandas-basic:0.0.2",
         cmds=["python"],
         arguments=[
             "/opt/airflow/dags/example1/dag1/tasks/task2.py",
